@@ -188,7 +188,7 @@
     
     // Jam 07:25 sampai 11:45
     if ((hour > 7 || (hour === 7 && minute >= 25)) && 
-        (hour < 11 || (hour === 11 && minute <= 45))) {
+        (hour < 12 || (hour === 12 && minute <= 45))) {
         return true;
     }
     return false;
