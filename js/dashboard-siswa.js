@@ -1,6 +1,8 @@
-// dashboard-siswa.js - VERSI DIPERBAIKI
+// ============================================================
+// dashboard-siswa.js - REBUILD 2025
+// 3 Jenis Soal: PG, PGK (PG Kompleks), BS (Benar/Salah)
+// ============================================================
 
-// Ambil data user dari sessionStorage
 const currentUser = JSON.parse(sessionStorage.getItem('currentUser'));
 let currentExam = null;
 let currentQuestions = [];
@@ -13,7 +15,7 @@ if (!currentUser || currentUser.role !== 'siswa') {
     window.location.href = 'index.html';
 }
 
-// Tampilkan nama user
+// ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', function() {
     const userNameEl = document.getElementById('userName');
     const kelasSiswaEl = document.getElementById('kelasSiswa');
@@ -24,7 +26,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSubjects();
 });
 
-// Load mata pelajaran yang tersedia
+// ==================== LOAD SUBJECTS ====================
 async function loadSubjects() {
     const subjectList = document.getElementById('subjectList');
     if (!subjectList) return;
@@ -46,7 +48,7 @@ async function loadSubjects() {
         
         examsSnapshot.forEach(doc => {
             const exam = doc.data();
-            const totalSoal = (exam.jumlahSoal?.pg || 0) + (exam.jumlahSoal?.isian || 0) + (exam.jumlahSoal?.uraian || 0);
+            const totalSoal = (exam.jumlahSoal?.pg || 0) + (exam.jumlahSoal?.pgk || 0) + (exam.jumlahSoal?.bs || 0);
             subjectList.innerHTML += `
                 <div class="card" onclick="startExam('${doc.id}', '${exam.mataPelajaran || 'Ujian'}')">
                     <div class="card-icon">📚</div>
@@ -63,10 +65,9 @@ async function loadSubjects() {
     }
 }
 
-// Mulai ujian
+// ==================== START EXAM ====================
 async function startExam(examId, subjectName) {
     try {
-        // Cek apakah sudah pernah mengerjakan
         const existingAnswer = await answersRef
             .where('examId', '==', examId)
             .where('siswaId', '==', currentUser.id)
@@ -78,7 +79,6 @@ async function startExam(examId, subjectName) {
             return;
         }
         
-        // Ambil data ujian
         const examDoc = await examsRef.doc(examId).get();
         if (!examDoc.exists) {
             alert('Ujian tidak ditemukan');
@@ -87,63 +87,48 @@ async function startExam(examId, subjectName) {
         
         currentExam = { id: examId, ...examDoc.data() };
         
-        // Ambil soal berdasarkan kelas dan mata pelajaran
         const questionsSnapshot = await questionsRef
             .where('kelas', '==', currentExam.kelas)
             .where('mataPelajaran', '==', currentExam.mataPelajaran)
             .get();
         
-        currentQuestions = questionsSnapshot.docs
-            .map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }))
+        let allQuestions = questionsSnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
             .sort((a, b) => (a.nomor || 0) - (b.nomor || 0));
         
-        if (currentQuestions.length === 0) {
-            alert('Tidak ada soal untuk ujian ini. Silakan hubungi guru.');
+        if (allQuestions.length === 0) {
+            alert('Tidak ada soal untuk ujian ini.');
             return;
         }
         
-        // Filter soal berdasarkan tipe yang di-setting
         const examJumlahSoal = currentExam.jumlahSoal || {};
-        let filteredQuestions = [];
-        
-        const pgQuestions = currentQuestions.filter(q => q.tipe === 'pg');
-        const isianQuestions = currentQuestions.filter(q => q.tipe === 'isian');
-        const uraianQuestions = currentQuestions.filter(q => q.tipe === 'uraian');
+        const pgQuestions = allQuestions.filter(q => q.tipe === 'pg');
+        const pgkQuestions = allQuestions.filter(q => q.tipe === 'pgk');
+        const bsQuestions = allQuestions.filter(q => q.tipe === 'bs');
         
         const pgCount = examJumlahSoal.pg || pgQuestions.length;
-        const isianCount = examJumlahSoal.isian || isianQuestions.length;
-        const uraianCount = examJumlahSoal.uraian || uraianQuestions.length;
+        const pgkCount = examJumlahSoal.pgk || pgkQuestions.length;
+        const bsCount = examJumlahSoal.bs || bsQuestions.length;
         
-        filteredQuestions = [
+        currentQuestions = [
             ...pgQuestions.slice(0, pgCount),
-            ...isianQuestions.slice(0, isianCount),
-            ...uraianQuestions.slice(0, uraianCount)
+            ...pgkQuestions.slice(0, pgkCount),
+            ...bsQuestions.slice(0, bsCount)
         ];
         
-        if (filteredQuestions.length === 0) {
-            alert('Tidak ada soal yang sesuai dengan konfigurasi ujian');
+        if (currentQuestions.length === 0) {
+            alert('Tidak ada soal yang sesuai konfigurasi ujian');
             return;
         }
         
-        currentQuestions = filteredQuestions;
-        
-        // Set nilai per soal dari exam setting
-        const nilaiPerSoalSetting = currentExam.nilaiPerSoal || {
-            pg: 5,
-            isian: 5,
-            uraian: 5
-        };
-        
-        currentQuestions = currentQuestions.map(question => {
-            if (!question.nilai) {
-                if (question.tipe === 'pg') question.nilai = nilaiPerSoalSetting.pg;
-                else if (question.tipe === 'isian') question.nilai = nilaiPerSoalSetting.isian;
-                else if (question.tipe === 'uraian') question.nilai = nilaiPerSoalSetting.uraian;
+        const nilaiSetting = currentExam.nilaiPerSoal || { pg: 5, pgk: 5, bs: 5 };
+        currentQuestions = currentQuestions.map(q => {
+            if (!q.nilai) {
+                if (q.tipe === 'pg') q.nilai = nilaiSetting.pg;
+                else if (q.tipe === 'pgk') q.nilai = nilaiSetting.pgk;
+                else if (q.tipe === 'bs') q.nilai = nilaiSetting.bs;
             }
-            return question;
+            return q;
         });
         
         currentAnswers = {};
@@ -163,18 +148,17 @@ async function startExam(examId, subjectName) {
     }
 }
 
+// ==================== TIMER ====================
 function startTimer(duration) {
     const timerDisplay = document.getElementById('timer');
     if (!timerDisplay) return;
     
     let timeLeft = duration;
-    
     if (timerInterval) clearInterval(timerInterval);
     
     timerInterval = setInterval(() => {
         const minutes = Math.floor(timeLeft / 60);
         const seconds = timeLeft % 60;
-        
         timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         
         if (timeLeft <= 0) {
@@ -182,26 +166,24 @@ function startTimer(duration) {
             alert('Waktu habis!');
             submitExam();
         }
-        
         timeLeft--;
     }, 1000);
 }
 
-// 🔥 PERBAIKAN: Fungsi showQuestion dengan gambar di pilihan jawaban
+// ==================== SHOW QUESTION ====================
 function showQuestion() {
     const question = currentQuestions[currentQuestionIndex];
     const container = document.getElementById('questionContainer');
     
     if (!question || !container) return;
     
-    let questionHtml = `
+    let html = `
         <div class="question-number">Soal ${currentQuestionIndex + 1} dari ${currentQuestions.length}</div>
         <div class="question-point">Nilai: ${question.nilai || 0} poin</div>
     `;
     
-    // Gambar soal
     if (question.gambar && question.gambar.trim() !== '') {
-        questionHtml += `
+        html += `
             <div class="question-image-container">
                 <img src="${question.gambar}" 
                      alt="Gambar soal" 
@@ -213,80 +195,135 @@ function showQuestion() {
         `;
     }
     
-    // Teks soal
-    questionHtml += `<div class="question-text">${question.soal || 'Soal tidak tersedia'}</div>`;
+    html += `<div class="question-text">${question.soal || 'Soal tidak tersedia'}</div>`;
     
-    // Pilihan Jawaban
     if (question.tipe === 'pg') {
-        questionHtml += '<div class="options">';
-        const optionLetters = ['A', 'B', 'C', 'D'];
-        const pilihan = question.pilihan || [];
-        const gambarPilihan = question.gambarPilihan || {};
-        
-        for (let i = 0; i < pilihan.length; i++) {
-            const pilihanText = pilihan[i];
-            if (!pilihanText) continue;
-            
-            const optionLetter = optionLetters[i];
-            const isSelected = currentAnswers[question.id] === optionLetter;
-            const gambarUrl = (gambarPilihan && gambarPilihan[optionLetter]) ? gambarPilihan[optionLetter] : '';
-            
-            questionHtml += `<div class="option ${isSelected ? 'selected' : ''}" onclick="selectOption('${question.id}', '${optionLetter}')">`;
-            questionHtml += `<div class="option-marker">${optionLetter}</div>`;
-            questionHtml += `<div class="option-text">`;
-            
-            if (gambarUrl) {
-                questionHtml += `<img src="${gambarUrl}" 
-                       onclick="showOptionImage('${gambarUrl}', event)" 
-                       onerror="this.style.display='none'"
-                       style="cursor: pointer;"
-                       title="Klik untuk memperbesar">`;
-            }
-            questionHtml += `<span>${pilihanText}</span>`;
-            questionHtml += `</div>`; // tutup option-text
-            questionHtml += `</div>`; // tutup option
-        }
-        
-        questionHtml += '</div>';
-        
-    } else if (question.tipe === 'isian') {
-        questionHtml += `
-            <div class="short-answer">
-                <input type="text" 
-                       placeholder="Tulis jawaban Anda" 
-                       value="${escapeHtml(currentAnswers[question.id] || '')}"
-                       onchange="saveShortAnswer('${question.id}', this.value)">
-            </div>
-        `;
-        
-    } else if (question.tipe === 'uraian') {
-        questionHtml += `
-            <div class="essay-answer">
-                <textarea placeholder="Tulis jawaban Anda" rows="5"
-                          onchange="saveEssay('${question.id}', this.value)">${escapeHtml(currentAnswers[question.id] || '')}</textarea>
-            </div>
-        `;
+        html += renderPG(question);
+    } else if (question.tipe === 'pgk') {
+        html += renderPGK(question);
+    } else if (question.tipe === 'bs') {
+        html += renderBS(question);
     }
     
-    // Tombol navigasi
-    questionHtml += `<div class="navigation-buttons">`;
+    html += `<div class="navigation-buttons">`;
     if (currentQuestionIndex > 0) {
-        questionHtml += `<button class="nav-btn prev" onclick="prevQuestion()">← Sebelumnya</button>`;
+        html += `<button class="nav-btn prev" onclick="prevQuestion()">← Sebelumnya</button>`;
     } else {
-        questionHtml += `<div></div>`;
+        html += `<div></div>`;
     }
     
     if (currentQuestionIndex < currentQuestions.length - 1) {
-        questionHtml += `<button class="nav-btn next" onclick="nextQuestion()">Selanjutnya →</button>`;
+        html += `<button class="nav-btn next" onclick="nextQuestion()">Selanjutnya →</button>`;
     } else {
-        questionHtml += `<button class="nav-btn submit" onclick="submitExam()">Selesai</button>`;
+        html += `<button class="nav-btn submit" onclick="submitExam()">Selesai</button>`;
     }
-    questionHtml += `</div>`;
+    html += `</div>`;
     
-    container.innerHTML = questionHtml;
+    container.innerHTML = html;
 }
 
-// 🔥 FUNGSI BARU: Escape HTML untuk keamanan
+// ==================== RENDER PILIHAN GANDA ====================
+function renderPG(question) {
+    let html = '<div class="options">';
+    const optionLetters = ['A', 'B', 'C', 'D'];
+    const pilihan = question.pilihan || [];
+    const gambarPilihan = question.gambarPilihan || {};
+    
+    for (let i = 0; i < pilihan.length; i++) {
+        const pilihanText = pilihan[i];
+        if (!pilihanText) continue;
+        
+        const optionLetter = optionLetters[i];
+        const isSelected = currentAnswers[question.id] === optionLetter;
+        const gambarUrl = gambarPilihan[optionLetter] || '';
+        
+        html += `<div class="option ${isSelected ? 'selected' : ''}" onclick="selectOption('${question.id}', '${optionLetter}')">`;
+        html += `<div class="option-marker">${optionLetter}</div>`;
+        html += `<div class="option-text">`;
+        if (gambarUrl) {
+            html += `<img src="${gambarUrl}" 
+                    onclick="showOptionImage('${gambarUrl}', event)" 
+                    onerror="this.style.display='none'">`;
+        }
+        html += `<span>${pilihanText}</span>`;
+        html += `</div></div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+// ==================== RENDER PG KOMPLEKS ====================
+function renderPGK(question) {
+    let html = '<div class="info-multiple">ℹ️ Pilih lebih dari satu jawaban yang benar</div>';
+    html += '<div class="options">';
+    
+    const optionLetters = ['A', 'B', 'C', 'D', 'E'];
+    const pilihan = question.pilihan || [];
+    const gambarPilihan = question.gambarPilihan || {};
+    const selectedAnswers = currentAnswers[question.id] || [];
+    
+    for (let i = 0; i < pilihan.length; i++) {
+        const pilihanText = pilihan[i];
+        if (!pilihanText) continue;
+        
+        const optionLetter = optionLetters[i];
+        const isSelected = Array.isArray(selectedAnswers) && selectedAnswers.includes(optionLetter);
+        const gambarUrl = gambarPilihan[optionLetter] || '';
+        
+        html += `<div class="option ${isSelected ? 'selected' : ''}" onclick="toggleMultiOption('${question.id}', '${optionLetter}')">`;
+        html += `<div class="option-marker">${isSelected ? '✓' : ''} ${optionLetter}</div>`;
+        html += `<div class="option-text">`;
+        if (gambarUrl) {
+            html += `<img src="${gambarUrl}" 
+                    onclick="showOptionImage('${gambarUrl}', event)" 
+                    onerror="this.style.display='none'">`;
+        }
+        html += `<span>${pilihanText}</span>`;
+        html += `</div></div>`;
+    }
+    html += '</div>';
+    return html;
+}
+
+// ==================== RENDER BENAR/SALAH ====================
+function renderBS(question) {
+    const pernyataanList = question.pernyataanBS || [];
+    const jawabanSiswa = currentAnswers[question.id] || {};
+    
+    let html = '<div class="info-tf">ℹ️ Tentukan Benar (B) atau Salah (S) untuk setiap pernyataan</div>';
+    
+    pernyataanList.forEach((item, idx) => {
+        const jawabanItem = jawabanSiswa[idx] || '';
+        const textPernyataan = item.text || item.pernyataan || '';
+        
+        html += `
+            <div class="tf-item">
+                <div class="tf-number">${idx + 1}.</div>
+                <div class="tf-text">${textPernyataan}</div>
+                <div class="tf-options">
+                    <button class="tf-btn" 
+                            onclick="selectTrueFalse('${question.id}', ${idx}, 'B')"
+                            style="border-color: ${jawabanItem === 'B' ? '#28a745' : '#ddd'}; 
+                                   background: ${jawabanItem === 'B' ? '#28a745' : 'white'}; 
+                                   color: ${jawabanItem === 'B' ? 'white' : '#333'};">
+                        B
+                    </button>
+                    <button class="tf-btn" 
+                            onclick="selectTrueFalse('${question.id}', ${idx}, 'S')"
+                            style="border-color: ${jawabanItem === 'S' ? '#dc3545' : '#ddd'}; 
+                                   background: ${jawabanItem === 'S' ? '#dc3545' : 'white'}; 
+                                   color: ${jawabanItem === 'S' ? 'white' : '#333'};">
+                        S
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    return html;
+}
+
+// ==================== HELPER ====================
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -294,7 +331,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// 🔥 FUNGSI BARU: Modal gambar
+// ==================== MODAL GAMBAR ====================
 function showImageModal(imageUrl) {
     const modal = document.getElementById('imageModal');
     const modalImg = document.getElementById('modalImage');
@@ -303,73 +340,93 @@ function showImageModal(imageUrl) {
         modalImg.src = imageUrl;
     }
 }
+
 function showOptionImage(imageUrl, event) {
-    if (event) {
-        event.stopPropagation(); // Mencegah agar tidak memilih jawaban saat klik gambar
-    }
-    const modal = document.getElementById('imageModal');
-    const modalImg = document.getElementById('modalImage');
-    if (modal && modalImg) {
-        modal.style.display = 'flex';
-        modalImg.src = imageUrl;
-    }
+    if (event) event.stopPropagation();
+    showImageModal(imageUrl);
 }
 
 function closeImageModal() {
     const modal = document.getElementById('imageModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
+    if (modal) modal.style.display = 'none';
 }
 
+// ==================== HANDLER JAWABAN ====================
 function selectOption(questionId, answer) {
     currentAnswers[questionId] = answer;
     showQuestion();
     updateQuestionGrid();
 }
 
-function saveShortAnswer(questionId, value) {
-    currentAnswers[questionId] = value || '';
+function toggleMultiOption(questionId, optionLetter) {
+    if (!currentAnswers[questionId]) {
+        currentAnswers[questionId] = [];
+    }
+    const answers = currentAnswers[questionId];
+    const index = answers.indexOf(optionLetter);
+    if (index === -1) {
+        answers.push(optionLetter);
+    } else {
+        answers.splice(index, 1);
+    }
+    showQuestion();
     updateQuestionGrid();
 }
 
-function saveEssay(questionId, value) {
-    currentAnswers[questionId] = value || '';
+function selectTrueFalse(questionId, pernyataanIndex, jawaban) {
+    if (!currentAnswers[questionId]) {
+        currentAnswers[questionId] = {};
+    }
+    currentAnswers[questionId][pernyataanIndex] = jawaban;
+    showQuestion();
     updateQuestionGrid();
 }
 
-function nextQuestion() {
-    if (currentQuestionIndex < currentQuestions.length - 1) {
-        currentQuestionIndex++;
-        showQuestion();
-    }
-}
-
-function prevQuestion() {
-    if (currentQuestionIndex > 0) {
-        currentQuestionIndex--;
-        showQuestion();
-    }
-}
-
-function jumpToQuestion(index) {
+// ==================== NAVIGASI (FIXED) ====================
+function goToQuestion(index) {
     if (index >= 0 && index < currentQuestions.length) {
         currentQuestionIndex = index;
         showQuestion();
+        updateQuestionGrid();
     }
 }
 
+function nextQuestion() {
+    goToQuestion(currentQuestionIndex + 1);
+}
+
+function prevQuestion() {
+    goToQuestion(currentQuestionIndex - 1);
+}
+
+function jumpToQuestion(index) {
+    goToQuestion(index);
+}
+
+// ==================== UPDATE GRID ====================
 function updateQuestionGrid() {
     const grid = document.getElementById('questionGrid');
     if (!grid) return;
     
-    let gridHtml = '';
+    let html = '';
     
     currentQuestions.forEach((question, index) => {
-        const isAnswered = currentAnswers[question.id] !== undefined && currentAnswers[question.id] !== '';
+        const jawaban = currentAnswers[question.id];
+        let isAnswered = false;
+        
+        if (jawaban !== undefined && jawaban !== '') {
+            if (Array.isArray(jawaban)) {
+                isAnswered = jawaban.length > 0;
+            } else if (typeof jawaban === 'object' && jawaban !== null) {
+                isAnswered = Object.keys(jawaban).length > 0;
+            } else {
+                isAnswered = true;
+            }
+        }
+        
         const isCurrent = index === currentQuestionIndex;
         
-        gridHtml += `
+        html += `
             <div class="question-grid-item ${isAnswered ? 'answered' : ''} ${isCurrent ? 'current' : ''}" 
                  onclick="jumpToQuestion(${index})">
                 ${index + 1}
@@ -377,101 +434,153 @@ function updateQuestionGrid() {
         `;
     });
     
-    grid.innerHTML = gridHtml;
+    grid.innerHTML = html;
 }
 
+// ==================== SUBMIT EXAM (AUTO KOREKSI) ====================
 async function submitExam() {
-    if (!confirm('Apakah Anda yakin ingin mengumpulkan jawaban?')) {
-        return;
-    }
+    if (!confirm('Apakah Anda yakin ingin mengumpulkan jawaban?')) return;
     
     if (timerInterval) clearInterval(timerInterval);
     
     try {
         const examDoc = await examsRef.doc(currentExam.id).get();
+        if (!examDoc.exists) {
+            alert('Data ujian tidak ditemukan');
+            return;
+        }
         const examData = examDoc.data();
         
-        if (!examData) {
-            throw new Error('Data ujian tidak ditemukan');
-        }
-        
-        const nilaiPGPerSoal = examData.nilaiPerSoal?.pg || 5;
-        const nilaiIsianPerSoal = examData.nilaiPerSoal?.isian || 5;
-        const nilaiUraianPerSoal = examData.nilaiPerSoal?.uraian || 5;
+        const POIN_PER_SOAL = 5;
+        const nilaiPGPerSoal = examData.nilaiPerSoal?.pg || POIN_PER_SOAL;
+        const nilaiPGKPerSoal = examData.nilaiPerSoal?.pgk || POIN_PER_SOAL;
+        const nilaiBSPerSoal = examData.nilaiPerSoal?.bs || POIN_PER_SOAL;
         
         const jawabanPG = {};
-        const jawabanIsian = {};
-        const jawabanUraian = {};
+        const jawabanPGK = {};
+        const jawabanBS = {};
         
-        let nilaiPG = 0;
-        let nilaiIsian = 0;
-        let jmlPG = 0;
-        let jmlIsian = 0;
-        let jmlUraian = 0;
+        let nilaiPG = 0, nilaiPGK = 0, nilaiBS = 0;
+        let jmlPG = 0, jmlPGK = 0, jmlBS = 0;
+        const detailKoreksi = { pg: {}, pgk: {}, bs: {} };
         
         for (const question of currentQuestions) {
             const jawabanSiswa = currentAnswers[question.id];
-            const kunci = question.kunci;
             const tipe = question.tipe;
             
             if (tipe === 'pg') {
                 jmlPG++;
+                const jawabanStr = String(jawabanSiswa || '').trim().toUpperCase();
+                const kunciStr = String(question.kunci || '').trim().toUpperCase();
+                const benar = (jawabanStr !== '' && jawabanStr === kunciStr);
+                const nilai = benar ? nilaiPGPerSoal : 0;
+                nilaiPG += nilai;
+                
                 jawabanPG[question.id] = {
-                    jawaban: jawabanSiswa || '',
-                    kunci: kunci || '',
+                    jawaban: jawabanStr,
+                    kunci: kunciStr,
+                    benar: benar,
+                    nilai: nilai,
                     nomor: question.nomor,
                     soal: question.soal,
                     pilihan: question.pilihan || []
                 };
                 
-                if (jawabanSiswa && kunci) {
-                    const jawabanHuruf = String(jawabanSiswa).trim().toUpperCase();
-                    const kunciHuruf = String(kunci).trim().toUpperCase();
-                    if (jawabanHuruf === kunciHuruf) {
-                        nilaiPG += nilaiPGPerSoal;
-                    }
-                }
-            } 
-            else if (tipe === 'isian') {
-                jmlIsian++;
-                jawabanIsian[question.id] = {
-                    jawaban: jawabanSiswa || '',
-                    kunci: kunci || '',
+                detailKoreksi.pg[question.id] = {
+                    jawaban: jawabanStr,
+                    kunci: kunciStr,
+                    benar: benar,
+                    nilai: nilai,
+                    nilaiMaksimal: nilaiPGPerSoal
+                };
+            }
+            else if (tipe === 'pgk') {
+                jmlPGK++;
+                const jawabanArr = Array.isArray(jawabanSiswa) ? jawabanSiswa : [];
+                const kunciArr = Array.isArray(question.kunci) 
+                    ? question.kunci 
+                    : (typeof question.kunci === 'string' 
+                        ? question.kunci.split(',').map(k => k.trim().toUpperCase()).filter(Boolean)
+                        : []);
+                
+                const nilai = hitungNilaiPGK(jawabanArr, kunciArr, nilaiPGKPerSoal);
+                nilaiPGK += nilai;
+                
+                jawabanPGK[question.id] = {
+                    jawaban: jawabanArr,
+                    kunci: kunciArr,
+                    nilai: nilai,
+                    nomor: question.nomor,
+                    soal: question.soal,
+                    pilihan: question.pilihan || []
+                };
+                
+                detailKoreksi.pgk[question.id] = {
+                    jawaban: jawabanArr,
+                    kunci: kunciArr,
+                    nilai: nilai,
+                    nilaiMaksimal: nilaiPGKPerSoal
+                };
+            }
+            else if (tipe === 'bs') {
+                jmlBS++;
+                const jawabanObj = jawabanSiswa || {};
+                const pernyataanList = question.pernyataanBS || [];
+                
+                let benar = 0;
+                const detailBS = [];
+                
+                pernyataanList.forEach((item, idx) => {
+                    const jawabanItem = jawabanObj[idx] || '';
+                    const kunciItem = (item.kunci || item.jawaban || '').toUpperCase();
+                    const isBenar = (jawabanItem === kunciItem && jawabanItem !== '');
+                    if (isBenar) benar++;
+                    
+                    detailBS.push({
+                        pernyataan: item.text || item.pernyataan || '',
+                        jawaban: jawabanItem,
+                        kunci: kunciItem,
+                        benar: isBenar
+                    });
+                });
+                
+                const totalPernyataan = pernyataanList.length;
+                const nilai = totalPernyataan > 0 
+                    ? (benar / totalPernyataan) * nilaiBSPerSoal 
+                    : 0;
+                nilaiBS += nilai;
+                
+                jawabanBS[question.id] = {
+                    jawaban: jawabanObj,
+                    pernyataan: pernyataanList,
+                    benar: benar,
+                    total: totalPernyataan,
+                    nilai: nilai,
                     nomor: question.nomor,
                     soal: question.soal
                 };
                 
-                if (jawabanSiswa && kunci) {
-                    const jawabanStr = String(jawabanSiswa).toLowerCase().trim();
-                    const kunciStr = String(kunci).toLowerCase().trim();
-                    if (jawabanStr === kunciStr) {
-                        nilaiIsian += nilaiIsianPerSoal;
-                    }
-                }
-            }
-            else if (tipe === 'uraian') {
-                jmlUraian++;
-                jawabanUraian[question.id] = {
-                    jawaban: jawabanSiswa || '',
-                    soal: question.soal,
-                    nilaiMaksimal: nilaiUraianPerSoal,
-                    nilaiDiperoleh: 0,
-                    nomor: question.nomor
+                detailKoreksi.bs[question.id] = {
+                    jawaban: jawabanObj,
+                    pernyataan: detailBS,
+                    benar: benar,
+                    totalPernyataan: totalPernyataan,
+                    nilai: nilai,
+                    nilaiMaksimal: nilaiBSPerSoal
                 };
             }
         }
         
         const totalPG = jmlPG * nilaiPGPerSoal;
-        const totalIsian = jmlIsian * nilaiIsianPerSoal;
-        const totalUraian = jmlUraian * nilaiUraianPerSoal;
+        const totalPGK = jmlPGK * nilaiPGKPerSoal;
+        const totalBS = jmlBS * nilaiBSPerSoal;
         
-        const jumlahNilaiDiperoleh = nilaiPG + nilaiIsian;
-        const jumlahNilaiMaksimal = totalPG + totalIsian + totalUraian;
+        const jumlahNilaiDiperoleh = nilaiPG + nilaiPGK + nilaiBS;
+        const jumlahNilaiMaksimal = totalPG + totalPGK + totalBS;
         
-        let nilaiSementara = 0;
+        let nilaiAkhir = 0;
         if (jumlahNilaiMaksimal > 0) {
-            nilaiSementara = (jumlahNilaiDiperoleh / jumlahNilaiMaksimal) * 100;
-            nilaiSementara = Math.round(nilaiSementara);
+            nilaiAkhir = Math.round((jumlahNilaiDiperoleh / jumlahNilaiMaksimal) * 100);
         }
         
         await answersRef.add({
@@ -483,33 +592,25 @@ async function submitExam() {
             mataPelajaran: currentExam.mataPelajaran,
             
             jawabanPG: jawabanPG,
-            jawabanIsian: jawabanIsian,
-            jawabanUraian: jawabanUraian,
+            jawabanPGK: jawabanPGK,
+            jawabanBS: jawabanBS,
             
             nilaiPG: nilaiPG,
-            nilaiIsian: nilaiIsian,
-            nilaiUraian: 0,
+            nilaiPGK: nilaiPGK,
+            nilaiBS: nilaiBS,
             totalPG: totalPG,
-            totalIsian: totalIsian,
-            totalUraian: totalUraian,
+            totalPGK: totalPGK,
+            totalBS: totalBS,
             
-            jumlahSoal: {
-                pg: jmlPG,
-                isian: jmlIsian,
-                uraian: jmlUraian
-            },
+            detailKoreksi: detailKoreksi,
+            jumlahSoal: { pg: jmlPG, pgk: jmlPGK, bs: jmlBS },
+            nilaiAkhir: nilaiAkhir,
             
-            nilaiSementara: nilaiSementara,
-            statusKoreksi: jmlUraian > 0 ? 'pending' : 'selesai',
+            statusKoreksi: 'selesai',
             waktu: firebase.firestore.FieldValue.serverTimestamp()
         });
         
-        if (jmlUraian > 0) {
-            alert('Jawaban berhasil dikumpulkan!\nNilai Sementara: ' + nilaiSementara + '\n(Soal uraian menunggu koreksi)');
-        } else {
-            alert('Jawaban berhasil dikumpulkan!\nNilai Akhir: ' + nilaiSementara);
-        }
-        showResults(nilaiPG, nilaiIsian, totalPG, totalIsian);
+        showResults(nilaiPG, nilaiPGK, nilaiBS, totalPG, totalPGK, totalBS, nilaiAkhir);
         
     } catch (error) {
         console.error('Error submitting exam:', error);
@@ -517,25 +618,61 @@ async function submitExam() {
     }
 }
 
-function showResults(nilaiPG, nilaiIsian, totalPG, totalIsian) {
+// ==================== HITUNG NILAI PGK ====================
+function hitungNilaiPGK(jawabanArr, kunciArr, nilaiMaks) {
+    if (!jawabanArr || jawabanArr.length === 0) return 0;
+    if (!kunciArr || kunciArr.length === 0) return 0;
+    
+    const jawaban = jawabanArr.map(j => String(j).toUpperCase().trim()).filter(Boolean);
+    const kunci = kunciArr.map(k => String(k).toUpperCase().trim()).filter(Boolean);
+    
+    let B = 0;
+    let S = 0;
+    
+    for (const j of jawaban) {
+        if (kunci.includes(j)) {
+            B++;
+        } else {
+            S++;
+        }
+    }
+    
+    const K = kunci.length;
+    
+    if (B === K && S === 0 && jawaban.length === K) {
+        return nilaiMaks;
+    }
+    
+    if (S >= 1 && B >= 1) {
+        return 1;
+    }
+    
+    if (B >= 1 && S === 0 && B < K) {
+        return nilaiMaks / 2;
+    }
+    
+    return 0;
+}
+
+// ==================== SHOW RESULTS ====================
+function showResults(nilaiPG, nilaiPGK, nilaiBS, totalPG, totalPGK, totalBS, nilaiAkhir) {
     const examPage = document.getElementById('examPage');
     const resultPage = document.getElementById('resultPage');
     
     if (examPage) examPage.style.display = 'none';
     if (resultPage) resultPage.style.display = 'block';
     
-    const resultPG = document.getElementById('resultPG');
-    const resultIsian = document.getElementById('resultIsian');
-    const resultUraian = document.getElementById('resultUraian');
-    const resultTotal = document.getElementById('resultTotal');
+    const el = (id) => document.getElementById(id);
     
-    if (resultPG) resultPG.textContent = nilaiPG + ' / ' + totalPG;
-    if (resultIsian) resultIsian.textContent = nilaiIsian + ' / ' + totalIsian;
-    if (resultUraian) resultUraian.textContent = 'Menunggu koreksi guru';
-    if (resultTotal) resultTotal.textContent = (nilaiPG + nilaiIsian) + ' / ' + (totalPG + totalIsian);
+    if (el('resultPG')) el('resultPG').textContent = nilaiPG + ' / ' + totalPG;
+    if (el('resultPGK')) el('resultPGK').textContent = nilaiPGK + ' / ' + totalPGK;
+    if (el('resultBS')) el('resultBS').textContent = nilaiBS + ' / ' + totalBS;
+    if (el('resultTotal')) el('resultTotal').textContent = 
+        (nilaiPG + nilaiPGK + nilaiBS) + ' / ' + (totalPG + totalPGK + totalBS);
+    if (el('resultNilaiAkhir')) el('resultNilaiAkhir').textContent = nilaiAkhir;
 }
 
-// 🔥 PERBAIKAN: Fungsi backToMenu
+// ==================== BACK TO MENU ====================
 function backToMenu() {
     const resultPage = document.getElementById('resultPage');
     const mainMenu = document.getElementById('mainMenu');
@@ -543,20 +680,19 @@ function backToMenu() {
     if (resultPage) resultPage.style.display = 'none';
     if (mainMenu) mainMenu.style.display = 'block';
     
-    // Reset semua variabel
     currentExam = null;
     currentQuestions = [];
     currentAnswers = {};
     currentQuestionIndex = 0;
     if (timerInterval) clearInterval(timerInterval);
+    
+    loadSubjects();
 }
 
-// 🔥 PERBAIKAN: Fungsi logout
+// ==================== LOGOUT ====================
 function logout() {
     if (confirm('Apakah Anda yakin ingin logout?')) {
-        // Hapus session storage
         sessionStorage.removeItem('currentUser');
-        // Redirect ke halaman login
         window.location.href = 'index.html';
     }
 }
